@@ -1,0 +1,92 @@
+sudo apt update && sudo apt install aircrack-ng -y
+
+sudo nano /usr/local/bin/wifi_scan_airodump.sh
+
+#!/bin/bash
+
+# Plik wynikowy CSV
+OUTPUT_FILE="/var/log/wifi_scan_airodump.csv"
+
+# Interfejs sieciowy Wi-Fi (zmień jeśli masz inny interfejs)
+INTERFACE="wlan0"
+
+# Przełączanie karty w tryb monitorowania
+echo "[INFO] Przełączanie karty Wi-Fi w tryb monitorowania..."
+sudo airmon-ng check kill
+sudo airmon-ng start $INTERFACE
+MON_INTERFACE="${INTERFACE}mon"
+
+# Nagłówek pliku CSV
+echo "Timestamp,SSID,BSSID,Channel,Signal Level (dBm),Encryption" > "$OUTPUT_FILE"
+
+# Funkcja do skanowania Wi-Fi za pomocą `airodump-ng`
+scan_wifi() {
+    echo "[INFO] Uruchamianie airodump-ng..."
+    timeout 30 sudo airodump-ng --write /tmp/airodump --output-format csv $MON_INTERFACE > /dev/null 2>&1
+
+    # Parsowanie pliku CSV z `airodump-ng`
+    cat /tmp/airodump-01.csv | awk -F',' 'NR>2 && $1!="" {
+        timestamp=strftime("%Y-%m-%d %H:%M:%S")
+        ssid=$14
+        if (ssid == "" || ssid ~ /^[[:space:]]*$/) ssid="Hidden Network"
+        bssid=$1
+        channel=$4
+        signal=$9
+        encryption=$6
+        print timestamp "," ssid "," bssid "," channel "," signal "," encryption
+    }' >> "$OUTPUT_FILE"
+    
+    echo "[INFO] Skanowanie zakończone, zapisano do $OUTPUT_FILE"
+}
+
+# Pętla skanująca co 30 sekund
+while true; do
+    scan_wifi
+    sleep 30
+done
+
+sudo chmod +x /usr/local/bin/wifi_scan_airodump.sh
+
+
+cat /var/log/wifi_scan_airodump.csv
+
+
+sudo nano /etc/systemd/system/wifi_scan_airodump.service
+
+[Unit]
+Description=Skanowanie Wi-Fi z airodump-ng i zapisywanie do CSV
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/wifi_scan_airodump.sh
+Restart=always
+User=root
+WorkingDirectory=/usr/local/bin/
+StandardOutput=file:/var/log/wifi_scan_airodump.log
+StandardError=file:/var/log/wifi_scan_airodump_error.log
+
+[Install]
+WantedBy=multi-user.target
+
+
+sudo systemctl daemon-reload
+
+
+
+sudo systemctl enable wifi_scan_airodump.service
+
+
+
+sudo systemctl start wifi_scan_airodump.service
+
+
+
+sudo systemctl status wifi_scan_airodump.service
+
+
+sudo reboot
+
+
+cat /var/log/wifi_scan_airodump.csv
+
+
